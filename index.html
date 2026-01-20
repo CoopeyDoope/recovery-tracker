@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Recovery">
+  <title>Recovery Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; }
+    input[type="range"] { accent-color: #3b82f6; }
+    input[type="checkbox"] { accent-color: #3b82f6; width: 20px; height: 20px; }
+  </style>
+</head>
+<body class="min-h-screen text-gray-100 p-4 max-w-md mx-auto pb-20">
+  <div id="app"></div>
+  <script>
+    const dailyItems = [
+      { id: 'doorway_stretches', label: 'Doorway stretches', info: 'Place forearm on door frame, elbow at shoulder height. Step through gently until you feel stretch across left pec. Hold 20-30 seconds. Focus on left side.', count: 1 },
+      { id: 'shoulder_blade_squeezes', label: 'Shoulder blade squeezes', info: 'Sit up, squeeze shoulder blades together like holding a pencil between them. Hold 5 seconds, release. Do 5-10 reps per session.', count: 6 },
+      { id: 'chin_tucks', label: 'Chin tucks', info: 'Sitting tall, pull chin straight back making a double chin. Hold 5 seconds. Reverses forward head posture from screens.', count: 6 },
+      { id: 'movement_breaks', label: 'Movement breaks', info: 'Stand up, walk around, reset posture. Aim for every 30-45 mins. Tie to tasks - after emails, before calls, etc.', count: 6 }
+    ];
+
+    const routineItems = [
+      { id: 'shoulder_shrugs', label: 'Shoulder shrugs', info: 'Exaggerate the movement up and down. 10 reps.', sets: '10 reps' },
+      { id: 'pendulum_swings', label: 'Pendulum swings', info: 'Lean forward slightly, let arms hang loose. Sway them gently in small circles. No active lifting - gravity does the work. Gentle on shoulder.', sets: '30 secs each direction' },
+      { id: 'doorway_stretch_dedicated', label: 'Doorway stretch (dedicated)', info: 'Forearm on door frame, elbow at shoulder height. Step through until stretch across pec. Hold 30 seconds. Do TWICE on left, once on right.', sets: '30s ×2 (L), 30s ×1 (R)' },
+      { id: 'seated_twist', label: 'Seated twist', info: 'Sit tall on chair or floor. Rotate upper body to the left, use right hand on left knee to deepen slightly. Hold 20 seconds. Then other side. 3 each side.', sets: '20s × 3 each side' },
+      { id: 'prone_scapular_squeezes', label: 'Prone scapular squeezes', info: 'Lie face down, arms BY YOUR SIDES (not overhead), palms down. Lift hands a few inches by squeezing shoulder blades together and back. Hold 2 secs, lower. If right shoulder bothers you, do left arm only.', sets: '3 sets × 10 reps' },
+      { id: 'band_pull_aparts', label: 'Band pull-aparts', info: 'Hold band at chest height, arms straight in front. Pull apart by squeezing shoulder blades, bringing hands out to sides. Control it back slowly. This is your best friend - directly opposes desk posture.', sets: '3 sets × 15 reps' },
+      { id: 'external_rotation_left', label: 'External rotation (left)', info: 'Left elbow tucked at your side, bent 90°. Hold band with left hand, other end anchored. Rotate forearm outward keeping elbow pinned. Very light resistance. Left arm only.', sets: '2 sets × 15 reps' },
+      { id: 'chest_opener', label: 'Chest opener lying down', info: 'Lie on back, knees bent, arms out to sides with elbows bent 90° (goalpost shape). Let gravity gently open your chest. This is passive - no forcing. Just breathe.', sets: '60 seconds' }
+    ];
+
+    let weekData = JSON.parse(localStorage.getItem('recoveryData') || '{}');
+    let scriptUrl = localStorage.getItem('scriptUrl') || '';
+    let selectedDay = new Date().toISOString().split('T')[0];
+    let showSettings = false;
+    let expandedRoutine = null;
+    let saveStatus = '';
+
+    function getLast7Days() {
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        days.push(d.toISOString().split('T')[0]);
+      }
+      return days;
+    }
+
+    function formatDayLabel(dateStr) {
+      const date = new Date(dateStr);
+      const today = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      if (dateStr === today) return 'Today';
+      if (dateStr === yesterday) return 'Yesterday';
+      return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
+    }
+
+    function getDayData(dateStr) {
+      return weekData[dateStr] || { daily: {}, routine: {}, pain: 5, notes: '' };
+    }
+
+    function updateDayData(dateStr, field, key, value) {
+      const dayData = weekData[dateStr] || { daily: {}, routine: {}, pain: 5, notes: '' };
+      if (field === 'pain' || field === 'notes') {
+        weekData[dateStr] = { ...dayData, [field]: value };
+      } else {
+        weekData[dateStr] = { ...dayData, [field]: { ...dayData[field], [key]: value } };
+      }
+      localStorage.setItem('recoveryData', JSON.stringify(weekData));
+      render();
+    }
+
+    function getMultiCheckCount(dateStr, itemId, totalCount) {
+      const data = getDayData(dateStr).daily || {};
+      let count = 0;
+      for (let i = 1; i <= totalCount; i++) {
+        if (data[`${itemId}_${i}`]) count++;
+      }
+      return count;
+    }
+
+    function countDailyCompleted(dateStr) {
+      let count = 0;
+      const data = getDayData(dateStr).daily || {};
+      dailyItems.forEach(item => {
+        if (item.count === 1) {
+          if (data[item.id]) count++;
+        } else {
+          if (getMultiCheckCount(dateStr, item.id, item.count) >= item.count) count++;
+        }
+      });
+      return count;
+    }
+
+    function countRoutineCompleted(dateStr) {
+      const data = getDayData(dateStr).routine || {};
+      return routineItems.filter(item => data[item.id]).length;
+    }
+
+    async function saveToSheet() {
+      if (!scriptUrl) {
+        saveStatus = 'Set Google Script URL in settings first';
+        render();
+        setTimeout(() => { saveStatus = ''; render(); }, 3000);
+        return;
+      }
+      saveStatus = 'Saving...';
+      render();
+      const dayData = getDayData(selectedDay);
+      const dailyData = dailyItems.map(item => {
+        if (item.count === 1) {
+          return { id: item.id, label: item.label, done: !!dayData.daily[item.id] };
+        } else {
+          const count = getMultiCheckCount(selectedDay, item.id, item.count);
+          return { id: item.id, label: item.label, done: count >= Math.ceil(item.count / 2), count, total: item.count };
+        }
+      });
+      const payload = {
+        date: selectedDay,
+        daily: dailyData,
+        routine: routineItems.map(item => ({ id: item.id, label: item.label, done: !!dayData.routine[item.id] })),
+        pain: dayData.pain,
+        notes: dayData.notes
+      };
+      try {
+        await fetch(scriptUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        saveStatus = 'Saved!';
+      } catch (e) {
+        saveStatus = 'Error saving - check URL';
+      }
+      render();
+      setTimeout(() => { saveStatus = ''; render(); }, 3000);
+    }
+
+    function render() {
+      const dayData = getDayData(selectedDay);
+      const last7Days = getLast7Days();
+      const today = new Date().toISOString().split('T')[0];
+
+      document.getElementById('app').innerHTML = `
+        <div class="flex justify-between items-center mb-4">
+          <h1 class="text-xl font-bold text-blue-400">Recovery Tracker</h1>
+          <button onclick="showSettings=!showSettings;render()" class="text-gray-400 hover:text-white p-2">⚙️</button>
+        </div>
+
+        ${showSettings ? `
+        <div class="bg-gray-800 rounded-lg p-4 mb-4">
+          <label class="block text-sm text-gray-400 mb-2">Google Script URL:</label>
+          <input type="text" value="${scriptUrl}" onchange="scriptUrl=this.value;localStorage.setItem('scriptUrl',scriptUrl)" placeholder="Paste your script URL here" class="w-full bg-gray-700 rounded p-2 text-sm text-white">
+        </div>` : ''}
+
+        <div class="flex gap-1 mb-4 overflow-x-auto pb-2">
+          ${last7Days.map(dateStr => {
+            const hasActivity = countDailyCompleted(dateStr) > 0 || countRoutineCompleted(dateStr) > 0;
+            const isSelected = selectedDay === dateStr;
+            return `<button onclick="selectedDay='${dateStr}';render()" class="flex-shrink-0 px-3 py-2 rounded-lg text-xs flex flex-col items-center ${isSelected ? 'bg-blue-600 text-white' : hasActivity ? 'bg-gray-700 text-green-400' : 'bg-gray-800 text-gray-400'}">
+              <span>${formatDayLabel(dateStr)}</span>
+              ${hasActivity ? '<span class="text-xs mt-1">✓</span>' : ''}
+            </button>`;
+          }).join('')}
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-4 mb-4">
+          <h2 class="text-sm font-semibold text-gray-400 mb-3">DAILY</h2>
+          ${dailyItems.map(item => `
+            <div class="py-2 border-b border-gray-700 last:border-0">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-medium">${item.label}</span>
+                ${item.count > 1 ? `<span class="text-xs text-gray-400">${getMultiCheckCount(selectedDay, item.id, item.count)}/${item.count}</span>` : ''}
+              </div>
+              <p class="text-xs text-gray-400 mb-2">${item.info}</p>
+              ${item.count === 1 ? `
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" ${dayData.daily[item.id] ? 'checked' : ''} onchange="updateDayData('${selectedDay}','daily','${item.id}',this.checked)">
+                  <span class="text-sm text-gray-300">Done</span>
+                </label>
+              ` : `
+                <div class="flex gap-2 flex-wrap">
+                  ${[...Array(item.count)].map((_, i) => `
+                    <label class="flex items-center gap-1">
+                      <input type="checkbox" ${dayData.daily[`${item.id}_${i+1}`] ? 'checked' : ''} onchange="updateDayData('${selectedDay}','daily','${item.id}_${i+1}',this.checked)">
+                      <span class="text-xs text-gray-400">${i+1}</span>
+                    </label>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-4 mb-4">
+          <h2 class="text-sm font-semibold text-gray-400 mb-3">ROUTINE (3-4x per week)</h2>
+          ${routineItems.map(item => `
+            <div class="py-2 border-b border-gray-700 last:border-0">
+              <div class="flex items-center gap-3 cursor-pointer" onclick="if(event.target.type!=='checkbox'){expandedRoutine=expandedRoutine==='${item.id}'?null:'${item.id}';render()}">
+                <input type="checkbox" ${dayData.routine[item.id] ? 'checked' : ''} onchange="updateDayData('${selectedDay}','routine','${item.id}',this.checked)">
+                <div class="flex-1">
+                  <span class="${dayData.routine[item.id] ? 'text-green-400' : ''}">${item.label}</span>
+                  <span class="text-xs text-blue-400 ml-2">${item.sets}</span>
+                </div>
+                <span class="text-gray-500 text-sm">${expandedRoutine === item.id ? '▲' : '▼'}</span>
+              </div>
+              ${expandedRoutine === item.id ? `<div class="mt-2 ml-8 p-2 bg-gray-700 rounded text-sm text-gray-300">${item.info}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-4 mb-4">
+          <h2 class="text-sm font-semibold text-gray-400 mb-3">PAIN LEVEL: ${dayData.pain}/10</h2>
+          <input type="range" min="1" max="10" value="${dayData.pain}" oninput="updateDayData('${selectedDay}','pain',null,parseInt(this.value))" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+          <div class="flex justify-between text-xs text-gray-500 mt-1"><span>Minimal</span><span>Severe</span></div>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-4 mb-4">
+          <h2 class="text-sm font-semibold text-gray-400 mb-3">NOTES</h2>
+          <textarea placeholder="Any observations..." class="w-full bg-gray-700 rounded p-2 text-sm text-white resize-none h-20" onchange="updateDayData('${selectedDay}','notes',null,this.value)">${dayData.notes}</textarea>
+        </div>
+
+        <button onclick="saveToSheet()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">Save to Google Sheet</button>
+        
+        ${saveStatus ? `<p class="text-center mt-2 text-sm ${saveStatus.includes('Error') ? 'text-red-400' : 'text-green-400'}">${saveStatus}</p>` : ''}
+
+        <div class="mt-4 text-center text-xs text-gray-500">
+          Today: ${countDailyCompleted(today)}/4 daily complete • ${countRoutineCompleted(today)}/8 routine
+        </div>
+      `;
+    }
+
+    render();
+  </script>
+</body>
+</html>
