@@ -121,8 +121,10 @@
           return { id: item.id, label: item.label, done: count >= Math.ceil(item.count / 2), count, total: item.count };
         }
       });
+      const [year, month, day] = selectedDay.split('-');
+      const formattedDate = `${day}/${month}/${year}`;
       const payload = {
-        date: selectedDay,
+        date: formattedDate,
         daily: dailyData,
         routine: routineItems.map(item => ({ id: item.id, label: item.label, done: !!dayData.routine[item.id] })),
         pain: dayData.pain,
